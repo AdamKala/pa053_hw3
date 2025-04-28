@@ -38,6 +38,19 @@ def get_airport_temp(iata_code):
     
     return get_weather_data(latitude, longitude)
 
+def get_stock_price(stock_symbol):
+    stock_api_url = f"https://finnhub.io/api/v1/quote?symbol={stock_symbol}&token=d07nm1pr01qp8st5agv0d07nm1pr01qp8st5agvg"
+    try:
+        response = requests.get(stock_api_url)
+        response.raise_for_status()
+        stock_data = response.json()
+        if 'c' in stock_data: 
+            return stock_data['c']
+        else:
+            return None
+    except requests.RequestException:
+        return None
+
 def generate_response(result, accept_header):
     if "xml" in accept_header:
         root = ET.Element("result")
@@ -65,6 +78,11 @@ def handle_request():
             return "Invalid airport code or weather service unavailable", 400
         return generate_response(temp, accept)
 
+    if query_stock:
+        stock_price = get_stock_price(query_stock.upper())
+        if stock_price is None:
+            return "Invalid stock symbol or stock service unavailable", 400
+        return generate_response(stock_price, accept)
 
     return "Unexpected error", 500
 
