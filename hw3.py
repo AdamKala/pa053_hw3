@@ -60,6 +60,62 @@ def generate_response(result, accept_header):
     else:
         return jsonify(result)
 
+def evaluate_expression(expr):
+    import re
+
+    tokens = re.findall(r'\d+|\+|\-|\*|\/|\(|\)', expr.replace(' ', ''))
+    tokens.append('EOF') 
+
+    def parse_expression(index):
+        value, index = parse_term(index)
+        while tokens[index] in ('+', '-'):
+            op = tokens[index]
+            index += 1
+            next_value, index = parse_term(index)
+            if op == '+':
+                value += next_value
+            else:
+                value -= next_value
+        return value, index
+
+    def parse_term(index):
+        value, index = parse_factor(index)
+        while tokens[index] in ('*', '/'):
+            op = tokens[index]
+            index += 1
+            next_value, index = parse_factor(index)
+            if op == '*':
+                value *= next_value
+            else:
+                if next_value == 0:
+                    raise ZeroDivisionError("Division by zero")
+                value /= next_value
+        return value, index
+
+    def parse_factor(index):
+        token = tokens[index]
+        if token == '(':
+            index += 1
+            value, index = parse_expression(index)
+            if tokens[index] != ')':
+                raise ValueError("Mismatched parentheses")
+            index += 1
+            return value, index
+        elif re.match(r'\d+', token):
+            index += 1
+            return int(token), index
+        else:
+            raise ValueError(f"Unexpected token: {token}")
+
+    try:
+        result, index = parse_expression(0)
+        if tokens[index] != 'EOF':
+            raise ValueError("Unexpected input after expression")
+        return result
+    except (IndexError, ValueError, ZeroDivisionError):
+        return None
+
+
 @app.route('/', methods=['GET'])
 def handle_request():
     query_airport = request.args.get('queryAirportTemp')
@@ -83,6 +139,12 @@ def handle_request():
         if stock_price is None:
             return "Invalid stock symbol or stock service unavailable", 400
         return generate_response(stock_price, accept)
+    
+    if query_eval:
+        result = evaluate_expression(query_eval)
+        if result is None:
+            return "Invalid expression", 400
+        return generate_response(result, accept)
 
     return "Unexpected error", 500
 
