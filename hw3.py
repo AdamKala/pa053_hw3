@@ -33,7 +33,9 @@ def get_airport_temp(iata_code):
     coords = get_airport_coordinates(iata_code)
     if not coords:
         return None
+    
     latitude, longitude = coords
+    
     return get_weather_data(latitude, longitude)
 
 def generate_response(result, accept_header):
