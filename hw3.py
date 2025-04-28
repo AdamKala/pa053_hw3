@@ -1,52 +1,40 @@
 from flask import Flask, request, jsonify, Response
 import requests
 import xml.etree.ElementTree as ET
-import yfinance as yf
-import urllib.parse
 
 app = Flask(__name__)
 
-OPENWEATHERMAP_API_KEY = "218c58388976602f204098c909b44744"
+def get_airport_coordinates(iata_code):
+    airport_url = f"http://www.airport-data.com/api/ap_info.php?iata={iata_code}"
+    try:
+        response = requests.get(airport_url)
+        response.raise_for_status()
+        airport_data = response.json()
+        if not airport_data or not airport_data.get('latitude') or not airport_data.get('longitude'):
+            return None
+        return airport_data['latitude'], airport_data['longitude']
+    except requests.RequestException:
+        return None
 
-AIRPORT_COORDS = {
-    'JFK': (40.6413, -73.7781),  # New York
-    'LHR': (51.4700, -0.4543),   # London Heathrow
-    'CDG': (49.0097, 2.5479),    # Paris Charles de Gaulle
-    'DXB': (25.2532, 55.3657),   # Dubai
-    'HND': (35.5494, 139.7798),  # Tokyo Haneda
-}
+def get_weather_data(latitude, longitude):
+    weather_url = f"https://wttr.in/{latitude},{longitude}?format=j1"
+    try:
+        response = requests.get(weather_url)
+        response.raise_for_status()
+        weather_data = response.json()
+        if 'current_condition' in weather_data and weather_data['current_condition']:
+            return weather_data['current_condition'][0]['temp_C']
+        else:
+            return None
+    except requests.RequestException:
+        return None
 
 def get_airport_temp(iata_code):
-    coords = AIRPORT_COORDS.get(iata_code.upper())
+    coords = get_airport_coordinates(iata_code)
     if not coords:
         return None
-    lat, lon = coords
-    try:
-        weather_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={OPENWEATHERMAP_API_KEY}"
-        response = requests.get(weather_url, timeout=5)
-        response.raise_for_status() 
-        data = response.json()
-        return data['main']['temp']
-    except Exception as e:
-        print("Weather API error:", e)
-        return None
-
-def get_stock_price(symbol):
-    stock = yf.Ticker(symbol.upper())
-    hist = stock.history(period="1d")
-    if hist.empty:
-        return None
-    return round(hist['Close'][0], 2)
-
-
-def eval_expression(expr):
-    try:
-        expr = urllib.parse.unquote(expr) 
-        result = eval(expr, {"__builtins__": None}, {})
-        return result
-    except Exception as e:
-        print("Eval error:", e)
-        return None
+    latitude, longitude = coords
+    return get_weather_data(latitude, longitude)
 
 def generate_response(result, accept_header):
     if "xml" in accept_header:
@@ -70,22 +58,11 @@ def handle_request():
     accept = request.headers.get('Accept', '')
 
     if query_airport:
-        temp = get_airport_temp(query_airport)
+        temp = get_airport_temp(query_airport.upper()) 
         if temp is None:
             return "Invalid airport code or weather service unavailable", 400
         return generate_response(temp, accept)
 
-    if query_stock:
-        price = get_stock_price(query_stock)
-        if price is None:
-            return "Invalid stock symbol", 400
-        return generate_response(price, accept)
-
-    if query_eval:
-        result = eval_expression(query_eval)
-        if result is None:
-            return "Invalid expression", 400
-        return generate_response(result, accept)
 
     return "Unexpected error", 500
 
